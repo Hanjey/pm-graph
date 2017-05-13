@@ -59,6 +59,7 @@ import struct
 import ConfigParser
 from threading import Thread
 from subprocess import call, Popen, PIPE
+import base64
 
 # ----------------- CLASSES --------------------
 
@@ -301,6 +302,16 @@ class SystemValues:
 			self.testdir+'/'+self.prefix+'_'+self.suspendmode+'.html'
 		if not os.path.isdir(self.testdir):
 			os.mkdir(self.testdir)
+	def submitOptions(self):
+		self.testlog = False
+		self.dmesglog = True
+		self.ftracelog = False
+		self.usecallgraph = False
+		self.useprocmon = False
+		self.usedevsrc = False
+		self.timeformat = '%.6f'
+		self.mindevlen = 0.0
+		self.srgap = 0
 	def setDeviceFilter(self, value):
 		self.devicefilter = []
 		if value:
@@ -4631,6 +4642,74 @@ def getFPDT(output):
 	fp.close()
 	return fwData
 
+# Function: submitTimeline
+# Description:
+#	 Submit an html timeline to bugzilla
+def submitTimeline(db, stamp, htmlfile):
+	import json
+	import requests
+
+	if 'plat' not in stamp or 'man' not in stamp or 'cpu' not in stamp:
+		doError('This timeline cannot be submitted, missing hardware info')
+	if 'apikey' not in db and ('user' not in db or 'pass' not in db):
+		doError('missing login info and api key for submission')
+
+	# create the bug summary
+	dt = datetime.strptime(stamp['time'], '%B %d %Y, %I:%M:%S %p')
+	cf_datetime = dt.strftime('%Y-%m-%d %H:%M:%S')
+	summary = 'timeline: %s %s [%s] [%s]' % \
+		(stamp['mode'], stamp['kernel'], stamp['plat'], stamp['cpu'])
+	head = {'content-type': 'application/json'}
+
+	# create a new bug
+	if 'user' in db and 'pass' in db:
+		url = '%s/bug?login=%s&password=%s' % \
+			(db['url'], db['user'], db['pass'])
+	else:
+		url = '%s/bug?api_key=%s' % (db['url'], db['apikey'])
+	data = json.JSONEncoder().encode({
+		'product' : 'pm-graph',
+		'component' : db['component'],
+		'version' : '4.6',
+		'summary' : summary,
+		'op_sys' : 'Linux',
+		'rep_platform' : 'PC',
+		'cf_platform' : stamp['plat'],
+		'cf_cpu' : stamp['cpu'],
+		'cf_manufacturer' : stamp['man'],
+		'cf_kernel' : stamp['kernel'],
+		'cf_power_mode' : stamp['mode'],
+		'cf_datetime' : cf_datetime,
+		'severity' : 'enhancement',
+		'priority' : 'normal'
+	})
+	res = requests.post(url, data=data, headers=head)
+	res.raise_for_status()
+	bugid = res.json()['id']
+
+	# attach the timeline to the bug
+	if 'user' in db and 'pass' in db:
+		url = '%s/bug/%d/attachment?login=%s&password=%s' % \
+			(db['url'], bugid, db['user'], db['pass'])
+	else:
+		url = '%s/bug/%d/attachment?api_key=%s' % \
+			(db['url'], bugid, db['apikey'])
+	content = open(htmlfile, 'r').read()
+	data = json.JSONEncoder().encode({
+		'ids' : [ bugid ],
+		'is_patch' : False,
+		'is_markdown' : False,
+		'summary' : 'HTML Timeline',
+		'content_type' : 'text/html',
+		'data' : base64.b64encode(content),
+		'file_name' : 'timeline.html',
+		'obsoletes' : [],
+		'is_private' : False,
+	})
+	res = requests.post(url, data=data, headers=head)
+	res.raise_for_status()
+	os.remove(htmlfile)
+
 # Function: statusCheck
 # Description:
 #	 Verify that the requested command and options will work, and
@@ -4801,19 +4880,25 @@ def processData():
 # Function: rerunTest
 # Description:
 #	 generate an output from an existing set of ftrace/dmesg logs
-def rerunTest():
+def rerunTest(submit=False):
 	if sysvals.ftracefile:
 		doesTraceLogHaveTraceEvents()
 	if not sysvals.dmesgfile and not sysvals.usetraceeventsonly:
 		doError('recreating this html output requires a dmesg file')
-	sysvals.setOutputFile()
-	vprint('Output file: %s' % sysvals.htmlfile)
+	if submit:
+		sysvals.submitOptions()
+		sysvals.htmlfile = '/tmp/timeline-%d.html' % os.getpid()
+	else:
+		sysvals.setOutputFile()
+		vprint('Output file: %s' % sysvals.htmlfile)
 	if os.path.exists(sysvals.htmlfile):
 		if not os.path.isfile(sysvals.htmlfile):
 			doError('a directory already exists with this name: %s' % sysvals.htmlfile)
 		elif not os.access(sysvals.htmlfile, os.W_OK):
 			doError('missing permission to write to %s' % sysvals.htmlfile)
-	return processData()
+	testruns = processData()
+	if submit:
+		submitTimeline(submit, testruns[0].stamp, sysvals.htmlfile)
 
 # Function: runTest
 # Description:
@@ -5127,6 +5212,7 @@ if __name__ == '__main__':
 	outdir = ''
 	multitest = {'run': False, 'count': 0, 'delay': 0}
 	simplecmds = ['-modes', '-fpdt', '-flist', '-flistall', '-usbtopo', '-usbauto', '-status']
+	bugzilla = {'component':'sleepgraph'}
 	# loop through the command line arguments
 	args = iter(sys.argv[1:])
 	for arg in args:
@@ -5268,6 +5354,15 @@ if __name__ == '__main__':
 			except:
 				doError('No devnames supplied', True)
 			sysvals.setDeviceFilter(val)
+		elif(arg == '-submit'):
+			sysvals.notestrun = True
+			bugzilla['submit'] = True
+		elif(arg == '-login'):
+			try:
+				bugzilla['user'] = args.next()
+				bugzilla['pass'] = args.next()
+			except:
+				doError('Missing username and password', True)
 		else:
 			doError('Invalid argument: '+arg, True)
 
@@ -5303,7 +5398,15 @@ if __name__ == '__main__':
 
 	# if instructed, re-analyze existing data files
 	if(sysvals.notestrun):
-		rerunTest()
+		if 'submit' in bugzilla:
+			bugzilla['url'] = base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
+			bugzilla['apikey'] = base64.b64decode('aHM5RzZmR3lrcWNQRUo5N2ExWDVRTTE2Uk01U0RHS2RZWHpuclR1Mg==')
+			if 'user' not in bugzilla or 'pass' not in bugzilla:
+				bugzilla['user'] = base64.b64decode('c2xlZXBncmFwaC10b29s')
+				bugzilla['pass'] = base64.b64decode('aGVhZGxlc3M=')
+			rerunTest(bugzilla)
+		else:
+			rerunTest()
 		sys.exit()
 
 	# verify that we can run a test

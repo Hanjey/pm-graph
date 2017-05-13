@@ -32,6 +32,7 @@ import platform
 import shutil
 from datetime import datetime, timedelta
 from subprocess import call, Popen, PIPE
+import base64
 import analyze_suspend as aslib
 
 # ----------------- CLASSES --------------------
@@ -728,6 +729,7 @@ if __name__ == '__main__':
 	cmd = ''
 	testrun = True
 	simplecmds = ['-updategrub', '-flistall']
+	bugzilla = {'component':'bootgraph'}
 	args = iter(sys.argv[1:])
 	for arg in args:
 		if(arg == '-h'):
@@ -786,6 +788,15 @@ if __name__ == '__main__':
 			except:
 				doError('No subdirectory name supplied', True)
 			sysvals.testdir = sysvals.setOutputFolder(val)
+		elif(arg == '-submit'):
+			testrun = False
+			bugzilla['submit'] = True
+		elif(arg == '-login'):
+			try:
+				bugzilla['user'] = args.next()
+				bugzilla['pass'] = args.next()
+			except:
+				doError('Missing username and password', True)
 		elif(arg == '-reboot'):
 			sysvals.reboot = True
 		elif(arg == '-manual'):
@@ -798,10 +809,14 @@ if __name__ == '__main__':
 			doError('Invalid argument: '+arg, True)
 
 	# compatibility errors and access checks
+	if 'submit' in bugzilla and not sysvals.dmesgfile:
+		doError('-submit requires a dmesg and/or ftrace log')
 	if(sysvals.iscronjob and (sysvals.reboot or \
-		sysvals.dmesgfile or sysvals.ftracefile or cmd)):
+		sysvals.dmesgfile or sysvals.ftracefile or \
+		'submit' in bugzilla or cmd)):
 		doError('-cronjob is meant for batch purposes only')
-	if(sysvals.reboot and (sysvals.dmesgfile or sysvals.ftracefile)):
+	if(sysvals.reboot and (sysvals.dmesgfile or \
+		sysvals.ftracefile or 'submit' in bugzilla)):
 		doError('-reboot and -dmesg/-ftrace are incompatible')
 	if cmd or sysvals.reboot or sysvals.iscronjob or testrun:
 		sysvals.rootCheck(True)
@@ -840,7 +855,18 @@ if __name__ == '__main__':
 	if testrun:
 		retrieveLogs()
 	else:
-		sysvals.setOutputFile()
+		# rerun with submit
+		if 'submit' in bugzilla:
+			bugzilla['url'] = base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
+			bugzilla['apikey'] = base64.b64decode('cTljQTRQTkJZRkVSMXFRYmdTRnpOM0VmRFM1QTlPcnN0YWVJWjc3dA==')
+			if 'user' not in bugzilla or 'pass' not in bugzilla:
+				bugzilla['user'] = base64.b64decode('Ym9vdGdyYXBoLXRvb2w=')
+				bugzilla['pass'] = base64.b64decode('aGVhZGxlc3M=')
+			sysvals.submitOptions()
+			sysvals.htmlfile = '/tmp/timeline-%d.html' % os.getpid()
+		# rerun with output file
+		else:
+			sysvals.setOutputFile()
 
 	# process the log data
 	if sysvals.dmesgfile:
@@ -873,3 +899,6 @@ if __name__ == '__main__':
 		os.getuid() == 0 and 'SUDO_USER' in os.environ:
 		cmd = 'chown -R {0}:{0} {1} > /dev/null 2>&1'
 		call(cmd.format(os.environ['SUDO_USER'], sysvals.testdir), shell=True)
+
+	if 'submit' in bugzilla:
+		aslib.submitTimeline(bugzilla, sysvals.stamp, sysvals.htmlfile)
