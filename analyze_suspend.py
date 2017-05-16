@@ -1043,6 +1043,12 @@ class Data:
 			else:
 				self.trimTime(self.tSuspended, \
 					self.tResumed-self.tSuspended, False)
+	def getTimeValues(self):
+		sktime = (self.dmesg['suspend_machine']['end'] - \
+			self.tKernSus) * 1000
+		rktime = (self.dmesg['resume_complete']['end'] - \
+			self.dmesg['resume_machine']['start']) * 1000
+		return (sktime, rktime)
 	def setPhase(self, phase, ktime, isbegin):
 		if(isbegin):
 			self.dmesg[phase]['start'] = ktime
@@ -3401,10 +3407,7 @@ def createHTML(testruns):
 	# Generate the header for this timeline
 	for data in testruns:
 		tTotal = data.end - data.start
-		sktime = (data.dmesg['suspend_machine']['end'] - \
-			data.tKernSus) * 1000
-		rktime = (data.dmesg['resume_complete']['end'] - \
-			data.dmesg['resume_machine']['start']) * 1000
+		sktime, rktime = data.getTimeValues()
 		if(tTotal == 0):
 			print('ERROR: No timeline data')
 			sys.exit()
@@ -4710,9 +4713,9 @@ def submitTimeline(db, stamp, htmlfile):
 			(stamp['url'], db['user'], db['pass'])
 	else:
 		url = '%s/bug?api_key=%s' % (stamp['url'], db['apikey'])
-	data = json.JSONEncoder().encode({
+	rawdata = {
 		'product' : 'pm-graph',
-		'component' : stamp['component'],
+		'component' : stamp['app'],
 		'version' : '4.6',
 		'summary' : summary,
 		'op_sys' : 'Linux',
@@ -4723,9 +4726,13 @@ def submitTimeline(db, stamp, htmlfile):
 		'cf_kernel' : stamp['kernel'],
 		'cf_power_mode' : stamp['mode'],
 		'cf_datetime' : cf_datetime,
+		'cf_enter_time' : int(round(stamp['enter']*1000)),
 		'severity' : 'enhancement',
 		'priority' : 'normal'
-	})
+	}
+	if 'exit' in stamp:
+		rawdata['cf_exit_time'] = int(round(stamp['exit']*1000))
+	data = json.JSONEncoder().encode(rawdata)
 	res = requests.post(url, data=data, headers=head)
 	res.raise_for_status()
 	bugid = res.json()['id']
@@ -4941,7 +4948,9 @@ def rerunTest(submit=False):
 			doError('missing permission to write to %s' % sysvals.htmlfile)
 	testruns = processData()
 	if submit:
-		submitTimeline(submit, testruns[0].stamp, sysvals.htmlfile)
+		stamp = testruns[0].stamp
+		stamp['enter'], stamp['exit'] = testruns[0].getTimeValues()
+		submitTimeline(submit, stamp, sysvals.htmlfile)
 
 # Function: runTest
 # Description:
