@@ -60,6 +60,8 @@ import ConfigParser
 from threading import Thread
 from subprocess import call, Popen, PIPE
 import base64
+import json
+import requests
 
 # ----------------- CLASSES --------------------
 
@@ -70,6 +72,7 @@ import base64
 class SystemValues:
 	title = 'SleepGraph'
 	version = '4.7a'
+	component = 'sleepgraph'
 	ansi = False
 	verbose = False
 	testlog = True
@@ -1814,6 +1817,7 @@ class Timeline:
 			return
 		self.html += '<div class="version"><a href="https://01.org/suspendresume">%s v%s</a></div>' \
 			% (sv.title, sv.version)
+		self.html += '<button id="searchstrict" class="schbtn">matches</button>'
 		if sv.logmsg and sv.testlog:
 			self.html += '<button id="showtest" class="logbtn">log</button>'
 		if sv.dmesglog:
@@ -1827,6 +1831,8 @@ class Timeline:
 			headline_sysinfo = '<div class="stamp sysinfo">{0} {1} <i>with</i> {2}</div>\n'
 			self.html += headline_sysinfo.format(sv.stamp['man'],
 				sv.stamp['plat'], sv.stamp['cpu'])
+		self.html += '<script>var testinfo = %s;</script>\n' % \
+			json.JSONEncoder().encode(sv.stamp)
 
 	# Function: getDeviceRows
 	# Description:
@@ -2071,6 +2077,9 @@ class TestProps:
 		data.stamp['host'] = m.group('host')
 		data.stamp['mode'] = m.group('mode')
 		data.stamp['kernel'] = m.group('kernel')
+		data.stamp['app'] = sv.component
+		data.stamp['url'] = \
+			base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
 		if re.match(self.sysinfofmt, self.sysinfo):
 			for f in self.sysinfo.split('|'):
 				val = f.strip()
@@ -3794,6 +3803,7 @@ def addCSS(hf, sv, testcount=1, kerror=False, extra=''):
 		.legend .square {position:absolute;cursor:pointer;top:10px; width:0px;height:20px;border:1px solid;padding-left:20px;}\n\
 		button {height:40px;width:200px;margin-bottom:20px;margin-top:20px;font-size:24px;}\n\
 		.logbtn {position:relative;float:right;height:25px;width:50px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
+		.schbtn {position:relative;float:right;height:25px;width:60px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
 		.devlist {position:'+devlistpos+';width:190px;}\n\
 		a:link {color:white;text-decoration:none;}\n\
 		a:visited {color:white;}\n\
@@ -4131,6 +4141,38 @@ def addScriptCode(hf, testruns):
 	'		win.document.write(title+"<pre>"+log.innerHTML+"</pre>");\n'\
 	'		win.document.close();\n'\
 	'	}\n'\
+	'	function searchWindow(e) {\n'\
+	'		if(typeof testinfo == \'undefined\') return;\n'\
+	'		var url = testinfo["url"]+"/bug?product=pm-graph&component="+testinfo["app"];\n'\
+	'		url += "&cf_power_mode="+testinfo["mode"];\n'\
+	'		url += "&cf_platform="+encodeURIComponent(testinfo["plat"]);\n'\
+	'		url += "&cf_cpu="+encodeURIComponent(testinfo["cpu"]);\n'\
+	'		url += "&cf_manufacturer="+encodeURIComponent(testinfo["man"]);\n'\
+	'		url += "&cf_kernel="+encodeURIComponent(testinfo["kernel"]);\n'\
+	'		var req = new XMLHttpRequest();\n'\
+	'		req.open("GET", url, true);\n'\
+	'		req.onload = function(e) {\n'\
+	'			var html = "";\n'\
+	'			var data = JSON.parse(this.responseText)["bugs"];\n'\
+	'			var count = 0;\n'\
+	'			for(var i in data) {\n'\
+	'				if(count++ > 2) break;\n'\
+	'				var bugid = data[i].id;\n'\
+	'				var url = testinfo["url"]+"/bug/"+bugid+"/attachment";\n'\
+	'				var areq = new XMLHttpRequest();\n'\
+	'				areq.open("GET", url, true);\n'\
+	'				areq.onload = function(e) {\n'\
+	'					var res = JSON.parse(this.responseText).bugs;\n'\
+	'					for(var id in res) break;\n'\
+	'					var win = window.open();\n'\
+	'					win.document.write(atob(res[id][0].data));\n'\
+	'					win.document.close();\n'\
+	'				}\n'\
+	'				areq.send();\n'\
+	'			}\n'\
+	'		}\n'\
+	'		req.send();\n'\
+	'	}\n'\
 	'	function onClickPhase(e) {\n'\
 	'	}\n'\
 	'	function onMouseDown(e) {\n'\
@@ -4176,6 +4218,9 @@ def addScriptCode(hf, testruns):
 	'		var list = document.getElementsByClassName("logbtn");\n'\
 	'		for (var i = 0; i < list.length; i++)\n'\
 	'			list[i].onclick = logWindow;\n'\
+	'		var list = document.getElementsByClassName("schbtn");\n'\
+	'		for (var i = 0; i < list.length; i++)\n'\
+	'			list[i].onclick = searchWindow;\n'\
 	'		list = document.getElementsByClassName("devlist");\n'\
 	'		for (var i = 0; i < list.length; i++)\n'\
 	'			list[i].onclick = devListWindow;\n'\
@@ -4646,8 +4691,6 @@ def getFPDT(output):
 # Description:
 #	 Submit an html timeline to bugzilla
 def submitTimeline(db, stamp, htmlfile):
-	import json
-	import requests
 
 	if 'plat' not in stamp or 'man' not in stamp or 'cpu' not in stamp:
 		doError('This timeline cannot be submitted, missing hardware info')
@@ -4664,12 +4707,12 @@ def submitTimeline(db, stamp, htmlfile):
 	# create a new bug
 	if 'user' in db and 'pass' in db:
 		url = '%s/bug?login=%s&password=%s' % \
-			(db['url'], db['user'], db['pass'])
+			(stamp['url'], db['user'], db['pass'])
 	else:
-		url = '%s/bug?api_key=%s' % (db['url'], db['apikey'])
+		url = '%s/bug?api_key=%s' % (stamp['url'], db['apikey'])
 	data = json.JSONEncoder().encode({
 		'product' : 'pm-graph',
-		'component' : db['component'],
+		'component' : stamp['component'],
 		'version' : '4.6',
 		'summary' : summary,
 		'op_sys' : 'Linux',
@@ -4690,10 +4733,10 @@ def submitTimeline(db, stamp, htmlfile):
 	# attach the timeline to the bug
 	if 'user' in db and 'pass' in db:
 		url = '%s/bug/%d/attachment?login=%s&password=%s' % \
-			(db['url'], bugid, db['user'], db['pass'])
+			(stamp['url'], bugid, db['user'], db['pass'])
 	else:
 		url = '%s/bug/%d/attachment?api_key=%s' % \
-			(db['url'], bugid, db['apikey'])
+			(stamp['url'], bugid, db['apikey'])
 	content = open(htmlfile, 'r').read()
 	data = json.JSONEncoder().encode({
 		'ids' : [ bugid ],
@@ -5212,7 +5255,7 @@ if __name__ == '__main__':
 	outdir = ''
 	multitest = {'run': False, 'count': 0, 'delay': 0}
 	simplecmds = ['-modes', '-fpdt', '-flist', '-flistall', '-usbtopo', '-usbauto', '-status']
-	bugzilla = {'component':'sleepgraph'}
+	db = dict()
 	# loop through the command line arguments
 	args = iter(sys.argv[1:])
 	for arg in args:
@@ -5356,11 +5399,11 @@ if __name__ == '__main__':
 			sysvals.setDeviceFilter(val)
 		elif(arg == '-submit'):
 			sysvals.notestrun = True
-			bugzilla['submit'] = True
+			db['submit'] = True
 		elif(arg == '-login'):
 			try:
-				bugzilla['user'] = args.next()
-				bugzilla['pass'] = args.next()
+				db['user'] = args.next()
+				db['pass'] = args.next()
 			except:
 				doError('Missing username and password', True)
 		else:
@@ -5398,13 +5441,12 @@ if __name__ == '__main__':
 
 	# if instructed, re-analyze existing data files
 	if(sysvals.notestrun):
-		if 'submit' in bugzilla:
-			bugzilla['url'] = base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
-			bugzilla['apikey'] = base64.b64decode('aHM5RzZmR3lrcWNQRUo5N2ExWDVRTTE2Uk01U0RHS2RZWHpuclR1Mg==')
-			if 'user' not in bugzilla or 'pass' not in bugzilla:
-				bugzilla['user'] = base64.b64decode('c2xlZXBncmFwaC10b29s')
-				bugzilla['pass'] = base64.b64decode('aGVhZGxlc3M=')
-			rerunTest(bugzilla)
+		if 'submit' in db:
+			db['apikey'] = base64.b64decode('aHM5RzZmR3lrcWNQRUo5N2ExWDVRTTE2Uk01U0RHS2RZWHpuclR1Mg==')
+			if 'user' not in db or 'pass' not in db:
+				db['user'] = base64.b64decode('c2xlZXBncmFwaC10b29s')
+				db['pass'] = base64.b64decode('aGVhZGxlc3M=')
+			rerunTest(db)
 		else:
 			rerunTest()
 		sys.exit()

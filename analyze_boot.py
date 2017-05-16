@@ -44,6 +44,7 @@ import analyze_suspend as aslib
 class SystemValues(aslib.SystemValues):
 	title = 'BootGraph'
 	version = '2.1a'
+	component = 'bootgraph'
 	hostname = 'localhost'
 	testtime = ''
 	kernel = ''
@@ -729,7 +730,7 @@ if __name__ == '__main__':
 	cmd = ''
 	testrun = True
 	simplecmds = ['-updategrub', '-flistall']
-	bugzilla = {'component':'bootgraph'}
+	db = dict()
 	args = iter(sys.argv[1:])
 	for arg in args:
 		if(arg == '-h'):
@@ -790,11 +791,11 @@ if __name__ == '__main__':
 			sysvals.testdir = sysvals.setOutputFolder(val)
 		elif(arg == '-submit'):
 			testrun = False
-			bugzilla['submit'] = True
+			db['submit'] = True
 		elif(arg == '-login'):
 			try:
-				bugzilla['user'] = args.next()
-				bugzilla['pass'] = args.next()
+				db['user'] = args.next()
+				db['pass'] = args.next()
 			except:
 				doError('Missing username and password', True)
 		elif(arg == '-reboot'):
@@ -809,14 +810,14 @@ if __name__ == '__main__':
 			doError('Invalid argument: '+arg, True)
 
 	# compatibility errors and access checks
-	if 'submit' in bugzilla and not sysvals.dmesgfile:
+	if 'submit' in db and not sysvals.dmesgfile:
 		doError('-submit requires a dmesg and/or ftrace log')
 	if(sysvals.iscronjob and (sysvals.reboot or \
 		sysvals.dmesgfile or sysvals.ftracefile or \
-		'submit' in bugzilla or cmd)):
+		'submit' in db or cmd)):
 		doError('-cronjob is meant for batch purposes only')
 	if(sysvals.reboot and (sysvals.dmesgfile or \
-		sysvals.ftracefile or 'submit' in bugzilla)):
+		sysvals.ftracefile or 'submit' in db)):
 		doError('-reboot and -dmesg/-ftrace are incompatible')
 	if cmd or sysvals.reboot or sysvals.iscronjob or testrun:
 		sysvals.rootCheck(True)
@@ -856,12 +857,12 @@ if __name__ == '__main__':
 		retrieveLogs()
 	else:
 		# rerun with submit
-		if 'submit' in bugzilla:
-			bugzilla['url'] = base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
-			bugzilla['apikey'] = base64.b64decode('cTljQTRQTkJZRkVSMXFRYmdTRnpOM0VmRFM1QTlPcnN0YWVJWjc3dA==')
-			if 'user' not in bugzilla or 'pass' not in bugzilla:
-				bugzilla['user'] = base64.b64decode('Ym9vdGdyYXBoLXRvb2w=')
-				bugzilla['pass'] = base64.b64decode('aGVhZGxlc3M=')
+		if 'submit' in db:
+			db['url'] = base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
+			db['apikey'] = base64.b64decode('cTljQTRQTkJZRkVSMXFRYmdTRnpOM0VmRFM1QTlPcnN0YWVJWjc3dA==')
+			if 'user' not in db or 'pass' not in db:
+				db['user'] = base64.b64decode('Ym9vdGdyYXBoLXRvb2w=')
+				db['pass'] = base64.b64decode('aGVhZGxlc3M=')
 			sysvals.submitOptions()
 			sysvals.htmlfile = '/tmp/timeline-%d.html' % os.getpid()
 		# rerun with output file
@@ -900,5 +901,5 @@ if __name__ == '__main__':
 		cmd = 'chown -R {0}:{0} {1} > /dev/null 2>&1'
 		call(cmd.format(os.environ['SUDO_USER'], sysvals.testdir), shell=True)
 
-	if 'submit' in bugzilla:
-		aslib.submitTimeline(bugzilla, sysvals.stamp, sysvals.htmlfile)
+	if 'submit' in db:
+		aslib.submitTimeline(db, sysvals.stamp, sysvals.htmlfile)
