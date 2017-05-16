@@ -61,7 +61,6 @@ from threading import Thread
 from subprocess import call, Popen, PIPE
 import base64
 import json
-import requests
 
 # ----------------- CLASSES --------------------
 
@@ -4694,6 +4693,7 @@ def getFPDT(output):
 # Description:
 #	 Submit an html timeline to bugzilla
 def submitTimeline(db, stamp, htmlfile):
+	import requests
 
 	if 'plat' not in stamp or 'man' not in stamp or 'cpu' not in stamp:
 		doError('This timeline cannot be submitted, missing hardware info')

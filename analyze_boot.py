@@ -902,5 +902,5 @@ if __name__ == '__main__':
 		call(cmd.format(os.environ['SUDO_USER'], sysvals.testdir), shell=True)
 
 	if 'submit' in db:
-		sysvals.stamp['enter'] = data.end - data.start
+		sysvals.stamp['enter'] = (data.end - data.start) * 1000
 		aslib.submitTimeline(db, sysvals.stamp, sysvals.htmlfile)
