@@ -1829,13 +1829,13 @@ class Timeline:
 				'&cf_cpu='+sv.stamp['cpu']+\
 				'&cf_manufacturer='+sv.stamp['man']+\
 				'&cf_power_mode='+sv.stamp['mode']+urlparams
-			self.html += '<button class="mchbtn" onclick=\'window.open("'+url+'")\'>matches</button>'
+			self.html += '<button class="btnfmt" onclick=\'window.open("'+url+'")\'>matches</button>'
 		if sv.logmsg and sv.testlog:
-			self.html += '<button id="showtest" class="logbtn">log</button>'
+			self.html += '<button id="showtest" class="logbtn btnfmt">log</button>'
 		if sv.dmesglog:
-			self.html += '<button id="showdmesg" class="logbtn">dmesg</button>'
+			self.html += '<button id="showdmesg" class="logbtn btnfmt">dmesg</button>'
 		if sv.ftracelog:
-			self.html += '<button id="showftrace" class="logbtn">ftrace</button>'
+			self.html += '<button id="showftrace" class="logbtn btnfmt">ftrace</button>'
 		headline_stamp = '<div class="stamp">{0} {1} {2} {3}</div>\n'
 		self.html += headline_stamp.format(sv.stamp['host'], sv.stamp['kernel'],
 			sv.stamp['mode'], sv.stamp['time'])
@@ -3812,8 +3812,7 @@ def addCSS(hf, sv, testcount=1, kerror=False, extra=''):
 		.legend {position:relative; width:100%; height:40px; text-align:center;margin-bottom:20px}\n\
 		.legend .square {position:absolute;cursor:pointer;top:10px; width:0px;height:20px;border:1px solid;padding-left:20px;}\n\
 		button {height:40px;width:200px;margin-bottom:20px;margin-top:20px;font-size:24px;}\n\
-		.logbtn {position:relative;float:right;height:25px;width:50px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
-		.mchbtn {position:relative;float:right;height:25px;width:60px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
+		.btnfmt {position:relative;float:right;height:25px;width:auto;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
 		.devlist {position:'+devlistpos+';width:190px;}\n\
 		a:link {color:white;text-decoration:none;}\n\
 		a:visited {color:white;}\n\
