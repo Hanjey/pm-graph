@@ -389,7 +389,10 @@ def createBootGraph(data):
 	devtl = aslib.Timeline(100, 20)
 
 	# write the test title and general info header
-	devtl.createHeader(sysvals)
+	urlparams = '&columnlist=cf_datetime%2Ccf_power_mode%2Ccf_kernel'\
+		'%2Ccf_platform%2Ccf_cpu%2Ccf_boot_time'\
+		'&order=cf_boot_time'
+	devtl.createHeader(sysvals, urlparams)
 
 	# Generate the header for this timeline
 	t0 = data.start
@@ -902,5 +905,5 @@ if __name__ == '__main__':
 		call(cmd.format(os.environ['SUDO_USER'], sysvals.testdir), shell=True)
 
 	if 'submit' in db:
-		sysvals.stamp['enter'] = (data.end - data.start) * 1000
+		sysvals.stamp['boot'] = (data.end - data.start) * 1000
 		aslib.submitTimeline(db, sysvals.stamp, sysvals.htmlfile)

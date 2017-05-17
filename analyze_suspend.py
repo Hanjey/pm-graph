@@ -1817,12 +1817,19 @@ class Timeline:
 		self.rowH = rowheight
 		self.scaleH = scaleheight
 		self.html = ''
-	def createHeader(self, sv):
+	def createHeader(self, sv, urlparams=''):
 		if(not sv.stamp['time']):
 			return
 		self.html += '<div class="version"><a href="https://01.org/suspendresume">%s v%s</a></div>' \
 			% (sv.title, sv.version)
-		self.html += '<button id="searchstrict" class="schbtn">matches</button>'
+		if urlparams:
+			url = sv.stamp['url'].replace('/rest', '/buglist')+\
+				'?query_format=advanced&product=pm-graph&component='+sv.stamp['app']+\
+				'&cf_platform='+sv.stamp['plat']+\
+				'&cf_cpu='+sv.stamp['cpu']+\
+				'&cf_manufacturer='+sv.stamp['man']+\
+				'&cf_power_mode='+sv.stamp['mode']+urlparams
+			self.html += '<button class="mchbtn" onclick=\'window.open("'+url+'")\'>matches</button>'
 		if sv.logmsg and sv.testlog:
 			self.html += '<button id="showtest" class="logbtn">log</button>'
 		if sv.dmesglog:
@@ -1836,8 +1843,6 @@ class Timeline:
 			headline_sysinfo = '<div class="stamp sysinfo">{0} {1} <i>with</i> {2}</div>\n'
 			self.html += headline_sysinfo.format(sv.stamp['man'],
 				sv.stamp['plat'], sv.stamp['cpu'])
-		self.html += '<script>var testinfo = %s;</script>\n' % \
-			json.JSONEncoder().encode(sv.stamp)
 
 	# Function: getDeviceRows
 	# Description:
@@ -3401,7 +3406,10 @@ def createHTML(testruns):
 	devtl = Timeline(30, scaleH)
 
 	# write the test title and general info header
-	devtl.createHeader(sysvals)
+	urlparams = '&columnlist=cf_datetime%2Ccf_power_mode%2Ccf_kernel'\
+		'%2Ccf_platform%2Ccf_cpu%2Ccf_suspend_time%2Ccf_resume_time'\
+		'&order=cf_resume_time'
+	devtl.createHeader(sysvals, urlparams)
 
 	# Generate the header for this timeline
 	for data in testruns:
@@ -3805,7 +3813,7 @@ def addCSS(hf, sv, testcount=1, kerror=False, extra=''):
 		.legend .square {position:absolute;cursor:pointer;top:10px; width:0px;height:20px;border:1px solid;padding-left:20px;}\n\
 		button {height:40px;width:200px;margin-bottom:20px;margin-top:20px;font-size:24px;}\n\
 		.logbtn {position:relative;float:right;height:25px;width:50px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
-		.schbtn {position:relative;float:right;height:25px;width:60px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
+		.mchbtn {position:relative;float:right;height:25px;width:60px;margin-top:3px;margin-bottom:0;font-size:10px;text-align:center;}\n\
 		.devlist {position:'+devlistpos+';width:190px;}\n\
 		a:link {color:white;text-decoration:none;}\n\
 		a:visited {color:white;}\n\
@@ -4143,40 +4151,6 @@ def addScriptCode(hf, testruns):
 	'		win.document.write(title+"<pre>"+log.innerHTML+"</pre>");\n'\
 	'		win.document.close();\n'\
 	'	}\n'\
-	'	function searchWindow(e) {\n'\
-	'		if(typeof testinfo == \'undefined\') return;\n'\
-	'		var url = testinfo["url"]+"/bug?product=pm-graph&component="+testinfo["app"];\n'\
-	'		url += "&cf_power_mode="+testinfo["mode"];\n'\
-	'		url += "&cf_platform="+encodeURIComponent(testinfo["plat"]);\n'\
-	'		url += "&cf_cpu="+encodeURIComponent(testinfo["cpu"]);\n'\
-	'		url += "&cf_manufacturer="+encodeURIComponent(testinfo["man"]);\n'\
-	'		url += "&cf_kernel="+encodeURIComponent(testinfo["kernel"]);\n'\
-	'		var req = new XMLHttpRequest();\n'\
-	'		req.open("GET", url, true);\n'\
-	'		req.onload = function(e) {\n'\
-	'			var html = "";\n'\
-	'			var data = JSON.parse(this.responseText)["bugs"];\n'\
-	'			var count = 0;\n'\
-	'			for(var i in data) {\n'\
-	'				if(count++ > 2) break;\n'\
-	'				var bugid = data[i].id;\n'\
-	'				var url = testinfo["url"]+"/bug/"+bugid+"/attachment";\n'\
-	'				var areq = new XMLHttpRequest();\n'\
-	'				areq.open("GET", url, true);\n'\
-	'				areq.onload = function(e) {\n'\
-	'					var res = JSON.parse(this.responseText).bugs;\n'\
-	'					for(var id in res) break;\n'\
-	'					var win = window.open();\n'\
-	'					win.document.write(atob(res[id][0].data));\n'\
-	'					win.document.close();\n'\
-	'				}\n'\
-	'				areq.send();\n'\
-	'			}\n'\
-	'		}\n'\
-	'		req.send();\n'\
-	'	}\n'\
-	'	function onClickPhase(e) {\n'\
-	'	}\n'\
 	'	function onMouseDown(e) {\n'\
 	'		dragval[0] = e.clientX;\n'\
 	'		dragval[1] = document.getElementById("dmesgzoombox").scrollLeft;\n'\
@@ -4211,18 +4185,12 @@ def addScriptCode(hf, testruns):
 	'		document.getElementById("zoomin").onclick = zoomTimeline;\n'\
 	'		document.getElementById("zoomout").onclick = zoomTimeline;\n'\
 	'		document.getElementById("zoomdef").onclick = zoomTimeline;\n'\
-	'		var list = document.getElementsByClassName("square");\n'\
-	'		for (var i = 0; i < list.length; i++)\n'\
-	'			list[i].onclick = onClickPhase;\n'\
 	'		var list = document.getElementsByClassName("err");\n'\
 	'		for (var i = 0; i < list.length; i++)\n'\
 	'			list[i].onclick = errWindow;\n'\
 	'		var list = document.getElementsByClassName("logbtn");\n'\
 	'		for (var i = 0; i < list.length; i++)\n'\
 	'			list[i].onclick = logWindow;\n'\
-	'		var list = document.getElementsByClassName("schbtn");\n'\
-	'		for (var i = 0; i < list.length; i++)\n'\
-	'			list[i].onclick = searchWindow;\n'\
 	'		list = document.getElementsByClassName("devlist");\n'\
 	'		for (var i = 0; i < list.length; i++)\n'\
 	'			list[i].onclick = devListWindow;\n'\
@@ -4726,12 +4694,12 @@ def submitTimeline(db, stamp, htmlfile):
 		'cf_kernel' : stamp['kernel'],
 		'cf_power_mode' : stamp['mode'],
 		'cf_datetime' : cf_datetime,
-		'cf_enter_time' : int(round(stamp['enter']*1000)),
 		'severity' : 'enhancement',
 		'priority' : 'normal'
 	}
-	if 'exit' in stamp:
-		rawdata['cf_exit_time'] = int(round(stamp['exit']*1000))
+	for tprop in ['suspend', 'resume', 'boot']:
+		if tprop in stamp:
+			rawdata['cf_'+tprop+'_time'] = int(round(stamp[tprop]*1000))
 	data = json.JSONEncoder().encode(rawdata)
 	res = requests.post(url, data=data, headers=head)
 	res.raise_for_status()
@@ -4949,7 +4917,7 @@ def rerunTest(submit=False):
 	testruns = processData()
 	if submit:
 		stamp = testruns[0].stamp
-		stamp['enter'], stamp['exit'] = testruns[0].getTimeValues()
+		stamp['suspend'], stamp['resume'] = testruns[0].getTimeValues()
 		submitTimeline(submit, stamp, sysvals.htmlfile)
 
 # Function: runTest
