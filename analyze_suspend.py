@@ -2089,7 +2089,7 @@ class TestProps:
 		data.stamp['kernel'] = m.group('kernel')
 		data.stamp['app'] = sv.component
 		data.stamp['url'] = \
-			base64.b64decode('aHR0cDovL3dvcHIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
+			base64.b64decode('aHR0cDovL290Y3BsLW1hbmFnZXIuamYuaW50ZWwuY29tL2J1Z3ppbGxhL3Jlc3QuY2dp')
 		if re.match(self.sysinfofmt, self.sysinfo):
 			for f in self.sysinfo.split('|'):
 				val = f.strip()
